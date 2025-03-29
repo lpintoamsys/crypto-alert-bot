@@ -4,6 +4,9 @@ from datetime import datetime
 import os
 from dotenv import load_dotenv
 from twilio.rest import Client
+from flask import Flask
+
+app = Flask(__name__)
 
 # Load environment variables
 load_dotenv()
@@ -16,6 +19,13 @@ TWILIO_ACCOUNT_SID = os.getenv('TWILIO_ACCOUNT_SID')
 TWILIO_AUTH_TOKEN = os.getenv('TWILIO_AUTH_TOKEN')
 TWILIO_PHONE_NUMBER = os.getenv('TWILIO_PHONE_NUMBER')
 YOUR_MOBILE_NUMBER = os.getenv('YOUR_MOBILE_NUMBER')
+
+@app.route('/')
+def home():
+    return "Bot is running!"
+
+def run_bot():
+    monitor_prices()  # In a separate thread
 
 # Threshold for alert (25% drop)
 PRICE_DROP_THRESHOLD = 0.25
@@ -104,6 +114,7 @@ def monitor_prices():
         print(f"Completed check at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         time.sleep(300)
 
-""" if __name__ == "__main__":
-    print("🚀 Starting Crypto Price Drop Alert Bot with SMS Notifications...")
-    monitor_prices() """
+if __name__ == "__main__":
+    import threading
+    threading.Thread(target=run_bot, daemon=True).start()
+    app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
