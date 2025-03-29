@@ -12,130 +12,91 @@ app = Flask(__name__)
 # Load environment variables
 load_dotenv()
 
-# CoinDCX API configuration
+# Configuration
 BASE_URL = 'https://api.coindcx.com'
+SELECTED_TOKENS = ['DEFIINR', 'DFIINR', 'GOATSINR', 'MIGGLESINR', 'ALPACAINR', 'TOMIINR', 'UFTINR', 'PEIPEIINR', 'E4CINR', 'STCINR', 'XRINR']  # Only these trigger rise alerts
+PRICE_THRESHOLD = 0.25  # 25% threshold
 
-# Twilio SMS configuration
-TWILIO_ACCOUNT_SID = os.getenv('TWILIO_ACCOUNT_SID')
-TWILIO_AUTH_TOKEN = os.getenv('TWILIO_AUTH_TOKEN')
-TWILIO_PHONE_NUMBER = os.getenv('TWILIO_PHONE_NUMBER')
-YOUR_MOBILE_NUMBER = os.getenv('YOUR_MOBILE_NUMBER')
+# Twilio setup
+twilio_client = Client(
+    os.getenv('TWILIO_ACCOUNT_SID'),
+    os.getenv('TWILIO_AUTH_TOKEN')
+)
+WHATSAPP_FROM = 'whatsapp:+14155238886'
+WHATSAPP_TO = f'whatsapp:{os.getenv("YOUR_MOBILE_NUMBER")}'
 
-@app.route('/')
-def home():
-    return "Crypto Alert Bot (INR) - Monitoring 5%↑/10%↑/25%↓"
-
-def run_bot():
-    monitor_prices()
-
-# Alert thresholds
-PRICE_DROP_THRESHOLD = 0.25  # 25% drop
-PRICE_RISE_STRONG = 0.30    # 30% rise (significant)
-PRICE_RISE_MILD = 0.25     # 25% rise (new threshold)
-
-# Dictionary to store price history (only INR pairs)
+# Track all coins for drops, but only selected for rises
 price_history = {}
 
-# Initialize Twilio client
-twilio_client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
-
-def send_sms_alert(symbol, current_price, reference_price, percentage_change, alert_type):
-    """Send SMS alert with different formats for each alert type"""
-    if alert_type == "strong_rise":
-        emoji = "🚀🔥"
-        title = "STRONG RISE"
-    elif alert_type == "mild_rise":
-        emoji = "🚀"
-        title = "PRICE RISE"
-    else:  # drop
-        emoji = "🚨"
-        title = "PRICE DROP"
+def send_alert(symbol, current_price, change_percent, is_rise):
+    """Send WhatsApp alert"""
+    alert_type = "🚀 SELECTED TOKEN RISE" if is_rise else "🚨 TOKEN DROP"
+    emoji = "📈" if is_rise else "📉"
     
-    message_body = (
-        f"{emoji} {symbol} {title}\n"
-        f"📈 Change: +{percentage_change:.2f}%\n" if alert_type in ["strong_rise", "mild_rise"] else
-        f"📉 Change: -{percentage_change:.2f}%\n"
-        f"💰 Current: ₹{current_price:,.2f}\n"
-        f"🔍 Reference: ₹{reference_price:,.2f}\n"
-        f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+    message = (
+        f"{alert_type}\n"
+        f"• Token: {symbol}\n"
+        f"• {emoji} Change: {'+' if is_rise else '-'}{abs(change_percent):.2f}%\n"
+        f"• Price: ₹{current_price:,.2f}\n"
+        f"• Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
     )
     
     try:
-        message = twilio_client.messages.create(
-            body=message_body,
-            from_=TWILIO_PHONE_NUMBER,
-            to=YOUR_MOBILE_NUMBER
+        twilio_client.messages.create(
+            body=message,
+            from_=WHATSAPP_FROM,
+            to=WHATSAPP_TO
         )
-        print(f"SMS Alert Sent! {symbol} {title}")
+        print(f"Alert sent for {symbol}")
     except Exception as e:
-        print(f"SMS Failed: {e}")
+        print(f"Alert failed: {e}")
 
 def get_market_data():
-    """Fetch only INR pairs from CoinDCX"""
-    url = f"{BASE_URL}/exchange/ticker"
+    """Fetch all INR pairs"""
     try:
-        response = requests.get(url, timeout=10)
-        response.raise_for_status()
-        return [ticker for ticker in response.json() 
-                if isinstance(ticker, dict) 
-                and ticker.get('market', '').endswith('INR')]
+        response = requests.get(f"{BASE_URL}/exchange/ticker", timeout=10)
+        return {
+            ticker['market']: float(ticker['last_price'])
+            for ticker in response.json()
+            if isinstance(ticker, dict) 
+            and ticker.get('market', '').endswith('INR')
+            and 'last_price' in ticker
+        }
     except Exception as e:
-        print(f"API Error: {e}")
+        print(f"API error: {e}")
         return None
 
-def monitor_prices():
-    print("🚀 Starting INR Crypto Monitor: 5%↑/10%↑/25%↓")
+def monitor_market():
+    print(f"🔔 Monitoring:\n"
+          f"- Rises: Only {SELECTED_TOKENS}\n"
+          f"- Drops: All INR tokens")
+    
     while True:
-        market_data = get_market_data()
-        
-        if market_data:
-            for ticker in market_data:
-                try:
-                    symbol = ticker['market']
-                    current_price = float(ticker['last_price'])
-                    
-                    # Initialize new pair
-                    if symbol not in price_history:
-                        price_history[symbol] = {
-                            'high': current_price,
-                            'low': current_price,
-                            'last_price': current_price
-                        }
-                        continue
-                    
-                    last_price = price_history[symbol]['last_price']
-                    price_change = (current_price - last_price) / last_price
-                    
-                    # Check for 5% rise (new)
-                    if PRICE_RISE_MILD <= price_change < PRICE_RISE_STRONG:
-                        send_sms_alert(
-                            symbol, current_price, last_price,
-                            abs(price_change)*100, "mild_rise"
-                        )
-                    
-                    # Check for 10%+ rise
-                    elif price_change >= PRICE_RISE_STRONG:
-                        send_sms_alert(
-                            symbol, current_price, last_price,
-                            abs(price_change)*100, "strong_rise"
-                        )
-                    
-                    # Check for 25% drop
-                    elif price_change <= -PRICE_DROP_THRESHOLD:
-                        send_sms_alert(
-                            symbol, current_price, price_history[symbol]['high'],
-                            abs(price_change)*100, "drop"
-                        )
-                        price_history[symbol]['high'] = current_price
-                    
-                    # Update price history
-                    price_history[symbol]['high'] = max(current_price, price_history[symbol]['high'])
-                    price_history[symbol]['last_price'] = current_price
-                
-                except (KeyError, ValueError) as e:
-                    print(f"Data error in {ticker.get('market')}: {e}")
+        prices = get_market_data()
+        if prices:
+            for symbol, current_price in prices.items():
+                # Initialize if new token
+                if symbol not in price_history:
+                    price_history[symbol] = current_price
                     continue
+                
+                last_price = price_history[symbol]
+                change = (current_price - last_price) / last_price
+                
+                # Check conditions
+                if symbol in SELECTED_TOKENS and change >= PRICE_THRESHOLD:
+                    send_alert(symbol, current_price, change*100, is_rise=True)
+                elif change <= -PRICE_THRESHOLD:
+                    send_alert(symbol, current_price, abs(change)*100, is_rise=False)
+                
+                # Update price
+                price_history[symbol] = current_price
+
+@app.route('/')
+def status():
+    return (f"Tracking {len(SELECTED_TOKENS)} tokens for rises<br>"
+            f"Monitoring all INR tokens for drops")
 
 if __name__ == "__main__":
-    threading.Thread(target=run_bot, daemon=True).start()
+    threading.Thread(target=monitor_market, daemon=True).start()
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
