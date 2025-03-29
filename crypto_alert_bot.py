@@ -5,21 +5,17 @@ import os
 from dotenv import load_dotenv
 from twilio.rest import Client
 
-import os
-
 # Load environment variables
 load_dotenv()
 
 # CoinDCX API configuration
-COINDCX_API_KEY = os.getenv('COINDCX_API_KEY')
-COINDCX_API_SECRET = os.getenv('COINDCX_API_SECRET')
 BASE_URL = 'https://api.coindcx.com'
 
 # Twilio SMS configuration
 TWILIO_ACCOUNT_SID = os.getenv('TWILIO_ACCOUNT_SID')
 TWILIO_AUTH_TOKEN = os.getenv('TWILIO_AUTH_TOKEN')
 TWILIO_PHONE_NUMBER = os.getenv('TWILIO_PHONE_NUMBER')
-YOUR_MOBILE_NUMBER = os.getenv('YOUR_MOBILE_NUMBER')  # Include country code (e.g., +91 for India)
+YOUR_MOBILE_NUMBER = os.getenv('YOUR_MOBILE_NUMBER')
 
 # Threshold for alert (25% drop)
 PRICE_DROP_THRESHOLD = 0.25
@@ -64,39 +60,48 @@ def monitor_prices():
         
         if market_data:
             for ticker in market_data:
-                symbol = ticker['market']
-                current_price = float(ticker['last_price'])
-                
-                if symbol not in price_history:
-                    price_history[symbol] = {
-                        'previous_high': current_price,
-                        'last_checked': datetime.now()
-                    }
-                    continue
-                
-                previous_high = price_history[symbol]['previous_high']
-                
-                # Update high if current price is higher
-                if current_price > previous_high:
-                    price_history[symbol]['previous_high'] = current_price
-                    price_history[symbol]['last_checked'] = datetime.now()
-                else:
-                    # Calculate drop percentage
-                    if previous_high > 0:
-                        percentage_drop = (previous_high - current_price) / previous_high
+                try:
+                    symbol = ticker['market']
+                    
+                    # Skip if 'last_price' is missing or None
+                    if 'last_price' not in ticker or ticker['last_price'] is None:
+                        continue
                         
-                        # Trigger alert if drop >= 10%
-                        if percentage_drop >= PRICE_DROP_THRESHOLD:
-                            send_sms_alert(
-                                symbol,
-                                current_price,
-                                previous_high,
-                                percentage_drop * 100
-                            )
-                            # Reset high to avoid repeated alerts
-                            price_history[symbol]['previous_high'] = current_price
+                    current_price = float(ticker['last_price'])
+                    
+                    # Initialize if this is the first time seeing this symbol
+                    if symbol not in price_history:
+                        price_history[symbol] = {
+                            'previous_high': current_price,
+                            'last_checked': datetime.now()
+                        }
+                        continue
+                    
+                    # Update the previous high if current price is higher
+                    if current_price > price_history[symbol]['previous_high']:
+                        price_history[symbol]['previous_high'] = current_price
+                        price_history[symbol]['last_checked'] = datetime.now()
+                    else:
+                        # Calculate percentage drop
+                        previous_high = price_history[symbol]['previous_high']
+                        if previous_high > 0:  # Avoid division by zero
+                            percentage_drop = (previous_high - current_price) / previous_high
+                            
+                            # Check if drop exceeds threshold
+                            if percentage_drop >= PRICE_DROP_THRESHOLD:
+                                send_sms_alert(symbol, current_price, previous_high, percentage_drop*100)
+                                # Reset the high after alert to avoid repeated alerts
+                                price_history[symbol]['previous_high'] = current_price
+                
+                except KeyError as e:
+                    print(f"Missing expected key in ticker data: {e}")
+                    continue
+                except ValueError as e:
+                    print(f"Error converting price to float: {e}")
+                    continue
         
-        # Check every 5 minutes (adjust as needed)
+        # Wait before next check (e.g., 5 minutes)
+        print(f"Completed check at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         time.sleep(300)
 
 if __name__ == "__main__":
