@@ -135,8 +135,6 @@ def monitor_prices():
                 except (KeyError, ValueError) as e:
                     print(f"Data error in {ticker.get('market')}: {e}")
                     continue
-        
-        time.sleep(300)  # 5 minutes
 
 if __name__ == "__main__":
     threading.Thread(target=run_bot, daemon=True).start()
