@@ -109,10 +109,6 @@ def monitor_prices():
                 except ValueError as e:
                     print(f"Error converting price to float: {e}")
                     continue
-        
-        # Wait before next check (e.g., 5 minutes)
-        print(f"Completed check at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        time.sleep(300)
 
 if __name__ == "__main__":
     import threading
