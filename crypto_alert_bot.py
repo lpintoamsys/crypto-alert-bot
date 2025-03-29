@@ -104,6 +104,6 @@ def monitor_prices():
         print(f"Completed check at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         time.sleep(300)
 
-if __name__ == "__main__":
+""" if __name__ == "__main__":
     print("🚀 Starting Crypto Price Drop Alert Bot with SMS Notifications...")
-    monitor_prices()
+    monitor_prices() """
