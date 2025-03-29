@@ -30,8 +30,8 @@ def run_bot():
 
 # Alert thresholds
 PRICE_DROP_THRESHOLD = 0.25  # 25% drop
-PRICE_RISE_STRONG = 0.10     # 10% rise (significant)
-PRICE_RISE_MILD = 0.05       # 5% rise (new threshold)
+PRICE_RISE_STRONG = 0.30    # 30% rise (significant)
+PRICE_RISE_MILD = 0.25     # 25% rise (new threshold)
 
 # Dictionary to store price history (only INR pairs)
 price_history = {}
